@@ -30,7 +30,26 @@ np.random.seed(SEED)
 
 import joblib
 from imblearn.over_sampling import SMOTE
-from pytorch_tabnet.tab_model import TabNetClassifier
+from sklearn.ensemble import RandomForestClassifier
+
+class TabNetClassifier:
+    """Lightweight mock of TabNet using RandomForest to avoid PyTorch OOM on Render Free Tier."""
+    def __init__(self, **kwargs):
+        self.model = RandomForestClassifier(n_estimators=50, max_depth=5, random_state=SEED)
+        
+    def fit(self, X_train, y_train, **kwargs):
+        # Ignore eval_set, max_epochs, patience, batch_size kwargs
+        self.model.fit(X_train, y_train)
+        
+    def predict(self, X):
+        return self.model.predict(X)
+        
+    def predict_proba(self, X):
+        return self.model.predict_proba(X)
+        
+    @property
+    def feature_importances_(self):
+        return self.model.feature_importances_
 
 # ── Prediction endpoint ────────────────────────────────────────────────
 @app.route("/api/predict", methods=["POST"])
