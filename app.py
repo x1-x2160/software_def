@@ -146,21 +146,25 @@ def predict():
 
     # ── Train TabNet (tuned for speed on constrained hosting) ──────
     n_features = X_train_sm.shape[1]
-    # Scale architecture to dataset: smaller for more features to stay fast
-    dim = min(8, max(2, 12 - n_features // 3))
-    epochs = 15
+    
+    # Ultra-light architecture for Render free tier (512MB RAM limit)
+    epochs = 1
     model = TabNetClassifier(
-        n_d=dim, n_a=dim, n_steps=1, gamma=1.3,
+        n_d=2, n_a=2, n_steps=1, gamma=1.3,
         seed=SEED, verbose=0,
     )
+    
+    import gc
+    gc.collect() # Force garbage collection before PyTorch memory allocation
+    
     model.fit(
         X_train=X_train_sm.astype(np.float32),
         y_train=y_train_sm,
         eval_set=[(X_test_sc.astype(np.float32), np.array(y_test))],
         eval_metric=['auc'],
         max_epochs=epochs,
-        patience=3,
-        batch_size=256,
+        patience=1,
+        batch_size=128,
     )
     
     importances = model.feature_importances_
