@@ -128,75 +128,42 @@ def predict():
         X, y, test_size=0.20, stratify=y, random_state=SEED,
     )
 
-    # ── Check if Model Exists ───────────────────────────────────────
-    MODEL_PATH = "saved_tabnet_model.zip"
-    SCALER_PATH = "scaler.pkl"
-    FI_PATH = "feature_importances.pkl"
+    # ── Scale ───────────────────────────────────────────────────────
+    scaler = StandardScaler()
+    X_train_sc = scaler.fit_transform(X_train).astype(np.float32)
+    X_test_sc = scaler.transform(X_test).astype(np.float32)
+
+    # ── SMOTE ───────────────────────────────────────────────────────
+    smote = SMOTE(random_state=SEED)
+    try:
+        X_train_sm, y_train_sm = smote.fit_resample(X_train_sc, np.array(y_train))
+    except ValueError:
+        # Fallback if SMOTE fails (e.g., too few samples in minority class)
+        X_train_sm, y_train_sm = X_train_sc, np.array(y_train)
+
+    before_counts = {int(k): int(v) for k, v in zip(*np.unique(y_train, return_counts=True))}
+    after_counts = {int(k): int(v) for k, v in zip(*np.unique(y_train_sm, return_counts=True))}
+
+    # ── Train TabNet (tuned for speed on constrained hosting) ──────
+    n_features = X_train_sm.shape[1]
+    # Scale architecture to dataset: smaller for more features to stay fast
+    dim = min(8, max(2, 12 - n_features // 3))
+    epochs = 15
+    model = TabNetClassifier(
+        n_d=dim, n_a=dim, n_steps=1, gamma=1.3,
+        seed=SEED, verbose=0,
+    )
+    model.fit(
+        X_train=X_train_sm.astype(np.float32),
+        y_train=y_train_sm,
+        eval_set=[(X_test_sc.astype(np.float32), np.array(y_test))],
+        eval_metric=['auc'],
+        max_epochs=epochs,
+        patience=3,
+        batch_size=256,
+    )
     
-    use_saved_model = False
-    if os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH) and os.path.exists(FI_PATH):
-        try:
-            scaler = joblib.load(SCALER_PATH)
-            # Check if features match exactly
-            if hasattr(scaler, 'feature_names_in_'):
-                if list(X_train.columns) == list(scaler.feature_names_in_):
-                    use_saved_model = True
-            else:
-                # Fallback if scaler doesn't have feature names saved
-                if scaler.n_features_in_ == X_train.shape[1]:
-                    use_saved_model = True
-        except Exception:
-            pass
-
-    if use_saved_model:
-        X_train_sc = scaler.transform(X_train).astype(np.float32)
-        X_test_sc = scaler.transform(X_test).astype(np.float32)
-        
-        smote = SMOTE(random_state=SEED)
-        X_train_sm, y_train_sm = smote.fit_resample(X_train_sc, np.array(y_train))
-        
-        before_counts = {int(k): int(v) for k, v in zip(*np.unique(y_train, return_counts=True))}
-        after_counts = {int(k): int(v) for k, v in zip(*np.unique(y_train_sm, return_counts=True))}
-        
-        model = TabNetClassifier()
-        model.load_model(MODEL_PATH)
-        importances = joblib.load(FI_PATH)
-    else:
-        # ── Scale ───────────────────────────────────────────────────────
-        scaler = StandardScaler()
-        X_train_sc = scaler.fit_transform(X_train).astype(np.float32)
-        X_test_sc = scaler.transform(X_test).astype(np.float32)
-        joblib.dump(scaler, SCALER_PATH)
-
-        # ── SMOTE ───────────────────────────────────────────────────────
-        smote = SMOTE(random_state=SEED)
-        X_train_sm, y_train_sm = smote.fit_resample(X_train_sc, np.array(y_train))
-
-        before_counts = {int(k): int(v) for k, v in zip(*np.unique(y_train, return_counts=True))}
-        after_counts = {int(k): int(v) for k, v in zip(*np.unique(y_train_sm, return_counts=True))}
-
-        # ── Train TabNet (tuned for speed on constrained hosting) ──────
-        n_features = X_train_sm.shape[1]
-        # Scale architecture to dataset: smaller for more features to stay fast
-        dim = min(8, max(2, 12 - n_features // 3))
-        epochs = 15
-        model = TabNetClassifier(
-            n_d=dim, n_a=dim, n_steps=1, gamma=1.3,
-            seed=SEED, verbose=0,
-        )
-        model.fit(
-            X_train=X_train_sm.astype(np.float32),
-            y_train=y_train_sm,
-            eval_set=[(X_test_sc.astype(np.float32), np.array(y_test))],
-            eval_metric=['auc'],
-            max_epochs=epochs,
-            patience=3,
-            batch_size=256,
-        )
-        model.save_model("saved_tabnet_model")
-        
-        importances = model.feature_importances_
-        joblib.dump(importances, FI_PATH)
+    importances = model.feature_importances_
 
     # ── Predict on test set ─────────────────────────────────────────
     y_pred = model.predict(X_test_sc.astype(np.float32))
