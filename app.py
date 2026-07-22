@@ -87,38 +87,38 @@ def predict():
     warnings_list = []
     orig_rows, orig_cols = X.shape
 
-    # 1. Feature selection (max 30 columns to avoid SMOTE/TabNet overhead)
-    if orig_cols > 30:
-        selector = SelectKBest(score_func=f_classif, k=30)
+    # 1. Feature selection (max 20 columns to avoid SMOTE/TabNet overhead)
+    if orig_cols > 20:
+        selector = SelectKBest(score_func=f_classif, k=20)
         try:
             X_new = selector.fit_transform(X, y)
             selected_indices = selector.get_support(indices=True)
             X = pd.DataFrame(X_new, columns=[X.columns[i] for i in selected_indices])
             warnings_list.append(
-                f"Feature count ({orig_cols}) exceeded host limits. Selected top 30 most predictive features."
+                f"Feature count ({orig_cols}) exceeded host limits. Selected top 20 most predictive features."
             )
         except Exception:
             # Fallback if SelectKBest fails (e.g. constant columns)
-            X = X.iloc[:, :30]
+            X = X.iloc[:, :20]
             warnings_list.append(
-                f"Feature count ({orig_cols}) exceeded host limits. Truncated to first 30 features."
+                f"Feature count ({orig_cols}) exceeded host limits. Truncated to first 20 features."
             )
 
-    # 2. Row Downsampling (max 3000 rows to fit within Render's RAM/timeout limits)
-    if orig_rows > 3000:
+    # 2. Row Downsampling (max 800 rows to fit within Render's RAM/timeout limits)
+    if orig_rows > 800:
         # Perform stratified sample if classes are present
         try:
             _, X_sample, _, y_sample = train_test_split(
-                X, y, test_size=3000, stratify=y, random_state=SEED
+                X, y, test_size=800, stratify=y, random_state=SEED
             )
             X, y = X_sample, y_sample
         except Exception:
             # Fallback to random sample
-            sampled = df.sample(n=3000, random_state=SEED)
+            sampled = df.sample(n=800, random_state=SEED)
             X = sampled[X.columns]
             y = sampled[target_col]
         warnings_list.append(
-            f"Row count ({orig_rows}) exceeded host limits. Randomly sampled 3,000 modules for processing."
+            f"Row count ({orig_rows}) exceeded host limits. Randomly sampled 800 modules for processing."
         )
 
     feature_names = list(X.columns)
@@ -178,10 +178,10 @@ def predict():
         # ── Train TabNet (tuned for speed on constrained hosting) ──────
         n_features = X_train_sm.shape[1]
         # Scale architecture to dataset: smaller for more features to stay fast
-        dim = min(8, max(4, 16 - n_features // 5))
-        epochs = 30 if n_features <= 25 else 20
+        dim = min(8, max(2, 12 - n_features // 3))
+        epochs = 15
         model = TabNetClassifier(
-            n_d=dim, n_a=dim, n_steps=3, gamma=1.3,
+            n_d=dim, n_a=dim, n_steps=1, gamma=1.3,
             seed=SEED, verbose=0,
         )
         model.fit(
@@ -190,7 +190,7 @@ def predict():
             eval_set=[(X_test_sc.astype(np.float32), np.array(y_test))],
             eval_metric=['auc'],
             max_epochs=epochs,
-            patience=5,
+            patience=3,
             batch_size=256,
         )
         model.save_model("saved_tabnet_model")
