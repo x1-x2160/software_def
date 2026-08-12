@@ -470,3 +470,77 @@ tr:hover td { background:rgba(59, 130, 246, 0.04); }
     width: 100%;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PAGINATION CONTROLS
+   ═══════════════════════════════════════════════════════════ */
+.pg-size-wrap {
+  display: flex;
+  align-items: center;
+}
+.pg-select {
+  background: #111827;
+  border: 1px solid #1F2937;
+  color: #60A5FA;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.pg-select:hover, .pg-select:focus {
+  border-color: #3B82F6;
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: -10px;
+  margin-bottom: 22px;
+  padding: 12px 16px;
+  background: #111827;
+  border: 1px solid #1F2937;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #9CA3AF;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.pg-info {
+  font-size: 11px;
+  color: #9CA3AF;
+}
+.pg-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pg-btn {
+  background: #1F2937;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #F3F4F6;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.pg-btn:hover:not(:disabled) {
+  background: #2563EB;
+  color: #FFF;
+  border-color: #3B82F6;
+}
+.pg-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.pg-indicator {
+  font-size: 11px;
+  color: #9CA3AF;
+}

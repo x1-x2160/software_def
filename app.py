@@ -33,7 +33,7 @@ from imblearn.over_sampling import SMOTE
 from sklearn.ensemble import RandomForestClassifier
 
 class TabNetClassifier:
-    """Lightweight mock of TabNet using RandomForest to avoid PyTorch OOM on Render Free Tier."""
+    #Lightweight mock of TabNet using RandomForest to avoid PyTorch OOM on Render Free Tier.
     def __init__(self, **kwargs):
         self.model = RandomForestClassifier(n_estimators=50, max_depth=5, random_state=SEED)
         
@@ -51,7 +51,7 @@ class TabNetClassifier:
     def feature_importances_(self):
         return self.model.feature_importances_
 
-# ── Prediction endpoint ────────────────────────────────────────────────
+# Prediction endpoint
 @app.route("/api/predict", methods=["POST"])
 def predict():
     if "file" not in request.files:
@@ -67,46 +67,46 @@ def predict():
     except Exception as e:
         return jsonify({"error": f"Could not parse CSV: {str(e)}"}), 400
 
-    # ── Identify target column ──────────────────────────────────────
+    #Identify target column
     possible = ["Defective", "defects", "Defect", "label", "class", "Class", "target"]
     target_col = next((c for c in possible if c in df.columns), None)
     if target_col is None:
         target_col = df.columns[-1]
 
-    # ── Normalise target to 0/1 ─────────────────────────────────────
+    #Normalise target to 0/1
     is_numeric = pd.api.types.is_numeric_dtype(df[target_col]) and not pd.api.types.is_bool_dtype(df[target_col])
     if not is_numeric:
         mapping = {"true": 1, "false": 0, "y": 1, "n": 0, "yes": 1, "no": 0, "1": 1, "0": 0}
         df[target_col] = (
             df[target_col].astype(str).str.strip().str.lower().map(mapping)
         )
-    # Handle booleans that pandas auto-detected
+    #Handle booleans that pandas auto-detected
     if pd.api.types.is_bool_dtype(df[target_col]):
         df[target_col] = df[target_col].astype(int)
     else:
         df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0).astype(int)
 
-    # ── Drop non-numeric feature columns ────────────────────────────
+    #Drop non-numeric feature columns
     non_numeric = df.select_dtypes(exclude=[np.number, 'bool']).columns.tolist()
     non_numeric = [c for c in non_numeric if c != target_col]
     if non_numeric:
         df = df.drop(columns=non_numeric)
 
-    # ── Missing values ──────────────────────────────────────────────
+    #Missing values
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     for col in numeric_cols:
         if df[col].isnull().sum() > 0:
             df[col] = df[col].fillna(df[col].median())
 
-    # ── Separate X / y ──────────────────────────────────────────────
+    #Separate X / y
     X = df.drop(columns=[target_col])
     y = df[target_col]
 
-    # ── Safeguards for Large Datasets (e.g. 10k x 10k) ──────────────
+    #Safeguards for Large Datasets (e.g. 10k x 10k)
     warnings_list = []
     orig_rows, orig_cols = X.shape
 
-    # 1. Feature selection (max 20 columns to avoid SMOTE/TabNet overhead)
+    #1. Feature selection (max 20 columns to avoid SMOTE/TabNet overhead)
     if orig_cols > 20:
         selector = SelectKBest(score_func=f_classif, k=20)
         try:
@@ -123,7 +123,7 @@ def predict():
                 f"Feature count ({orig_cols}) exceeded host limits. Truncated to first 20 features."
             )
 
-    # 2. Row Downsampling (max 800 rows to fit within Render's RAM/timeout limits)
+    #2. Row Downsampling (max 800 rows to fit within Render's RAM/timeout limits)
     if orig_rows > 800:
         # Perform stratified sample if classes are present
         try:
@@ -142,17 +142,17 @@ def predict():
 
     feature_names = list(X.columns)
 
-    # ── Train / test split ──────────────────────────────────────────
+    #Train / test split
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.20, stratify=y, random_state=SEED,
     )
 
-    # ── Scale ───────────────────────────────────────────────────────
+    #Scale
     scaler = StandardScaler()
     X_train_sc = scaler.fit_transform(X_train).astype(np.float32)
     X_test_sc = scaler.transform(X_test).astype(np.float32)
 
-    # ── SMOTE ───────────────────────────────────────────────────────
+    #SMOTE
     smote = SMOTE(random_state=SEED)
     try:
         X_train_sm, y_train_sm = smote.fit_resample(X_train_sc, np.array(y_train))
@@ -163,10 +163,10 @@ def predict():
     before_counts = {int(k): int(v) for k, v in zip(*np.unique(y_train, return_counts=True))}
     after_counts = {int(k): int(v) for k, v in zip(*np.unique(y_train_sm, return_counts=True))}
 
-    # ── Train TabNet (tuned for speed on constrained hosting) ──────
+    #Train TabNet (tuned for speed on constrained hosting)
     n_features = X_train_sm.shape[1]
     
-    # Ultra-light architecture for Render free tier (512MB RAM limit)
+    #Ultra-light architecture for Render free tier (512MB RAM limit)
     epochs = 1
     model = TabNetClassifier(
         n_d=2, n_a=2, n_steps=1, gamma=1.3,
@@ -188,7 +188,7 @@ def predict():
     
     importances = model.feature_importances_
 
-    # ── Predict on test set ─────────────────────────────────────────
+    #Predict on test set
     y_pred = model.predict(X_test_sc.astype(np.float32))
     y_proba = model.predict_proba(X_test_sc.astype(np.float32))
     y_test_arr = np.array(y_test)
@@ -199,14 +199,14 @@ def predict():
     f1 = float(f1_score(y_test_arr, y_pred, zero_division=0))
     cm = confusion_matrix(y_test_arr, y_pred).tolist()
 
-    # ── Feature importance ──────────────────────────────────────────
+    #Feature importance
     fi_list = sorted(
         [{"feature": fn, "importance": round(float(imp), 4)}
          for fn, imp in zip(feature_names, importances)],
         key=lambda x: x["importance"], reverse=True,
     )
 
-    # ── Per-module predictions (full test set) ──────────────────────
+    #Per-module predictions (full test set)
     test_df = pd.DataFrame(X_test_sc, columns=feature_names)
     test_df["prediction"] = y_pred
     test_df["actual"] = y_test_arr
@@ -218,7 +218,7 @@ def predict():
     test_df_unscaled = X_test.copy()
     test_df_unscaled.reset_index(drop=True, inplace=True)
 
-    # Sort feature importances for reference
+    #Sort feature importances for reference
     fi_sorted = sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)
     top_important_features = [f[0] for f in fi_sorted[:5]]
 
@@ -340,8 +340,8 @@ def predict():
             "defective": pred_defective,
             "nonDefective": pred_non_defective,
         },
-        # Limit modules to 50 to avoid huge JSON payloads on constrained hosts
-        "modules": modules[:50],
+        # Limit modules to 200 to balance rich pagination with JSON payload size
+        "modules": modules[:200],
     })
 
 
